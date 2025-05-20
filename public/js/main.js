@@ -8,7 +8,6 @@ document.addEventListener("DOMContentLoaded", () => {
   const addStudentSection = document.getElementById("add-student")
   const manageStudentsSection = document.getElementById("manage-students")
 
-  // Navigation functionality
   dashboardLink.addEventListener("click", (e) => {
     e.preventDefault()
     showSection(dashboardSection)
@@ -30,105 +29,77 @@ document.addEventListener("DOMContentLoaded", () => {
   })
 
   function showSection(section) {
-    // Hide all sections
     dashboardSection.classList.add("d-none")
     dashboardSection.classList.remove("section-active")
-
     addStudentSection.classList.add("d-none")
     addStudentSection.classList.remove("section-active")
-
     manageStudentsSection.classList.add("d-none")
     manageStudentsSection.classList.remove("section-active")
-
-    // Show the selected section
     section.classList.remove("d-none")
     section.classList.add("section-active")
   }
 
   function updateActiveLink(activeLink) {
-    // Remove active class from all links
     dashboardLink.classList.remove("active")
     addStudentLink.classList.remove("active")
     manageStudentsLink.classList.remove("active")
-
-    // Add active class to the clicked link
     activeLink.classList.add("active")
   }
 
-  // Add Student Form Submission
   const addStudentForm = document.getElementById("add-student-form")
-
   addStudentForm.addEventListener("submit", (e) => {
     e.preventDefault()
 
     const formData = new FormData(addStudentForm)
     const studentData = {}
-
     formData.forEach((value, key) => {
       studentData[key] = value
     })
 
-    // Send data to server
     fetch("/api/students", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(studentData),
     })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok")
-        }
-        return response.json()
-      })
-      .then((data) => {
-        // Show success message
+      .then((res) => res.json())
+      .then(() => {
         alert("Student added successfully!")
         addStudentForm.reset()
-
-        // Navigate to manage students
         showSection(manageStudentsSection)
         updateActiveLink(manageStudentsLink)
         loadStudents()
       })
-      .catch((error) => {
-        console.error("Error:", error)
+      .catch((err) => {
+        console.error("Error:", err)
         alert("Error adding student. Please try again.")
       })
   })
 
-  // Load Dashboard Data
   function loadDashboardData() {
     fetch("/api/dashboard")
-      .then((response) => response.json())
+      .then((res) => res.json())
       .then((data) => {
         document.getElementById("total-students").textContent = data.totalStudents
         document.getElementById("male-students").textContent = data.maleStudents
         document.getElementById("female-students").textContent = data.femaleStudents
 
-        // Load recent students
-        const recentStudentsTable = document.getElementById("recent-students-table").getElementsByTagName("tbody")[0]
-        recentStudentsTable.innerHTML = ""
-
+        const recentTable = document.getElementById("recent-students-table").querySelector("tbody")
+        recentTable.innerHTML = ""
         data.recentStudents.forEach((student) => {
           const row = document.createElement("tr")
           row.innerHTML = `
-            <td>${student._id.substring(0, 8)}...</td>
+            <td>${student.id}</td>
             <td>${student.firstName} ${student.lastName}</td>
             <td>${student.email}</td>
             <td>${student.course}</td>
             <td>${new Date(student.enrollmentDate).toLocaleDateString()}</td>
           `
-          recentStudentsTable.appendChild(row)
+          recentTable.appendChild(row)
         })
       })
-      .catch((error) => {
-        console.error("Error loading dashboard data:", error)
-      })
+      .catch((err) => console.error("Error loading dashboard data:", err))
   }
 
-  // Load Students for Manage Students Section
   let currentPage = 1
   const pageSize = 10
   let totalStudents = 0
@@ -136,145 +107,96 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function loadStudents(page = 1, filters = {}) {
     currentPage = page
+    const params = new URLSearchParams({ page, limit: pageSize })
+    if (filters.name) params.append("name", filters.name)
+    if (filters.course) params.append("course", filters.course)
+    if (filters.gender) params.append("gender", filters.gender)
 
-    // Construct query parameters
-    const queryParams = new URLSearchParams()
-    queryParams.append("page", page)
-    queryParams.append("limit", pageSize)
-
-    if (filters.name) queryParams.append("name", filters.name)
-    if (filters.course) queryParams.append("course", filters.course)
-    if (filters.gender) queryParams.append("gender", filters.gender)
-
-    fetch(`/api/students?${queryParams.toString()}`)
-      .then((response) => response.json())
+    fetch(`/api/students?${params.toString()}`)
+      .then((res) => res.json())
       .then((data) => {
         filteredStudents = data.students
         totalStudents = data.total
 
-        const studentsTable = document.getElementById("students-table").getElementsByTagName("tbody")[0]
-        studentsTable.innerHTML = ""
+        const tbody = document.getElementById("students-table").querySelector("tbody")
+        tbody.innerHTML = ""
 
         if (filteredStudents.length === 0) {
-          const row = document.createElement("tr")
-          row.innerHTML = `<td colspan="7" class="text-center">No students found</td>`
-          studentsTable.appendChild(row)
+          tbody.innerHTML = `<tr><td colspan="7" class="text-center">No students found</td></tr>`
         } else {
           filteredStudents.forEach((student) => {
             const row = document.createElement("tr")
             row.innerHTML = `
-              <td>${student._id.substring(0, 8)}...</td>
+              <td>${student.id}</td>
               <td>${student.firstName} ${student.lastName}</td>
               <td>${student.email}</td>
               <td>${student.phone}</td>
               <td>${student.gender}</td>
               <td>${student.course}</td>
               <td>
-                <button class="btn btn-sm btn-primary edit-btn" data-id="${student._id}">
+                <button class="btn btn-sm btn-primary edit-btn" data-id="${student.id}">
                   <i class="bi bi-pencil-fill"></i>
                 </button>
-                <button class="btn btn-sm btn-danger delete-btn ms-1" data-id="${student._id}">
+                <button class="btn btn-sm btn-danger delete-btn ms-1" data-id="${student.id}">
                   <i class="bi bi-trash-fill"></i>
                 </button>
               </td>
             `
-            studentsTable.appendChild(row)
+            tbody.appendChild(row)
           })
 
-          // Add event listeners to edit and delete buttons
           document.querySelectorAll(".edit-btn").forEach((btn) => {
-            btn.addEventListener("click", function () {
-              const studentId = this.getAttribute("data-id")
-              openEditModal(studentId)
-            })
+            btn.addEventListener("click", () => openEditModal(btn.dataset.id))
           })
 
           document.querySelectorAll(".delete-btn").forEach((btn) => {
-            btn.addEventListener("click", function () {
-              const studentId = this.getAttribute("data-id")
-              openDeleteModal(studentId)
-            })
+            btn.addEventListener("click", () => openDeleteModal(btn.dataset.id))
           })
         }
 
-        // Update showing entries text
         const start = (page - 1) * pageSize + 1
         const end = Math.min(page * pageSize, totalStudents)
-        document.getElementById("showing-entries").textContent =
-          `Showing ${start} to ${end} of ${totalStudents} entries`
-
-        // Generate pagination
+        document.getElementById("showing-entries").textContent = `Showing ${start} to ${end} of ${totalStudents} entries`
         generatePagination(totalStudents, page)
       })
-      .catch((error) => {
-        console.error("Error loading students:", error)
-      })
+      .catch((err) => console.error("Error loading students:", err))
   }
 
-  // Generate pagination
   function generatePagination(total, currentPage) {
     const totalPages = Math.ceil(total / pageSize)
     const pagination = document.getElementById("pagination")
     pagination.innerHTML = ""
 
-    // Previous button
-    const prevLi = document.createElement("li")
-    prevLi.className = `page-item ${currentPage === 1 ? "disabled" : ""}`
-    prevLi.innerHTML = `<a class="page-link" href="#" aria-label="Previous">
-                          <span aria-hidden="true">&laquo;</span>
-                        </a>`
-    pagination.appendChild(prevLi)
-
-    if (currentPage > 1) {
-      prevLi.addEventListener("click", (e) => {
-        e.preventDefault()
-        loadStudents(currentPage - 1, getFilters())
-      })
+    const createPageItem = (label, disabled = false, active = false) => {
+      const li = document.createElement("li")
+      li.className = `page-item${disabled ? " disabled" : ""}${active ? " active" : ""}`
+      li.innerHTML = `<a class="page-link" href="#">${label}</a>`
+      return li
     }
 
-    // Page numbers
+    const prev = createPageItem("«", currentPage === 1)
+    if (currentPage > 1) prev.addEventListener("click", () => loadStudents(currentPage - 1, getFilters()))
+    pagination.appendChild(prev)
+
     const maxPages = 5
     let startPage = Math.max(1, currentPage - Math.floor(maxPages / 2))
-    const endPage = Math.min(totalPages, startPage + maxPages - 1)
+    let endPage = Math.min(totalPages, startPage + maxPages - 1)
 
-    if (endPage - startPage + 1 < maxPages) {
-      startPage = Math.max(1, endPage - maxPages + 1)
-    }
+    if (endPage - startPage < maxPages - 1) startPage = Math.max(1, endPage - maxPages + 1)
 
     for (let i = startPage; i <= endPage; i++) {
-      const pageLi = document.createElement("li")
-      pageLi.className = `page-item ${i === currentPage ? "active" : ""}`
-      pageLi.innerHTML = `<a class="page-link" href="#">${i}</a>`
-      pagination.appendChild(pageLi)
-
-      pageLi.addEventListener("click", (e) => {
-        e.preventDefault()
-        loadStudents(i, getFilters())
-      })
+      const page = createPageItem(i, false, i === currentPage)
+      page.addEventListener("click", () => loadStudents(i, getFilters()))
+      pagination.appendChild(page)
     }
 
-    // Next button
-    const nextLi = document.createElement("li")
-    nextLi.className = `page-item ${currentPage === totalPages ? "disabled" : ""}`
-    nextLi.innerHTML = `<a class="page-link" href="#" aria-label="Next">
-                          <span aria-hidden="true">&raquo;</span>
-                        </a>`
-    pagination.appendChild(nextLi)
-
-    if (currentPage < totalPages) {
-      nextLi.addEventListener("click", (e) => {
-        e.preventDefault()
-        loadStudents(currentPage + 1, getFilters())
-      })
-    }
+    const next = createPageItem("»", currentPage === totalPages)
+    if (currentPage < totalPages) next.addEventListener("click", () => loadStudents(currentPage + 1, getFilters()))
+    pagination.appendChild(next)
   }
 
-  // Filter functionality
   const applyFiltersBtn = document.getElementById("apply-filters")
-
-  applyFiltersBtn.addEventListener("click", () => {
-    loadStudents(1, getFilters())
-  })
+  applyFiltersBtn.addEventListener("click", () => loadStudents(1, getFilters()))
 
   function getFilters() {
     return {
@@ -284,127 +206,70 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Edit Student Modal
   function openEditModal(studentId) {
     fetch(`/api/students/${studentId}`)
-      .then((response) => response.json())
+      .then((res) => res.json())
       .then((student) => {
-        document.getElementById("edit-student-id").value = student._id
+        document.getElementById("edit-student-id").value = student.id
         document.getElementById("edit-firstName").value = student.firstName
         document.getElementById("edit-lastName").value = student.lastName
         document.getElementById("edit-email").value = student.email
         document.getElementById("edit-phone").value = student.phone
         document.getElementById("edit-gender").value = student.gender
-        document.getElementById("edit-dateOfBirth").value = student.dateOfBirth.split("T")[0]
+        document.getElementById("edit-dateOfBirth").value = student.dateOfBirth
         document.getElementById("edit-course").value = student.course
-        document.getElementById("edit-enrollmentDate").value = student.enrollmentDate.split("T")[0]
+        document.getElementById("edit-enrollmentDate").value = student.enrollmentDate
         document.getElementById("edit-address").value = student.address
 
-        // Show the modal
-        const editModal = new bootstrap.Modal(document.getElementById("editStudentModal"))
-        editModal.show()
-      })
-      .catch((error) => {
-        console.error("Error fetching student details:", error)
+        const modal = new bootstrap.Modal(document.getElementById("editStudentModal"))
+        modal.show()
       })
   }
 
-  // Save edited student
   document.getElementById("save-edit-button").addEventListener("click", () => {
     const studentId = document.getElementById("edit-student-id").value
     const formData = new FormData(document.getElementById("edit-student-form"))
     const studentData = {}
-
     formData.forEach((value, key) => {
       studentData[key] = value
     })
 
     fetch(`/api/students/${studentId}`, {
       method: "PUT",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(studentData),
     })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok")
-        }
-        return response.json()
-      })
-      .then((data) => {
-        // Close the modal
-        const editModalElement = document.getElementById("editStudentModal")
-        const editModal = bootstrap.Modal.getInstance(editModalElement)
-        editModal.hide()
-
-        // Show success message
+      .then((res) => res.json())
+      .then(() => {
         alert("Student updated successfully!")
-
-        // Reload students
+        bootstrap.Modal.getInstance(document.getElementById("editStudentModal")).hide()
         loadStudents(currentPage, getFilters())
-
-        // If on dashboard, reload dashboard data
-        if (dashboardSection.classList.contains("section-active")) {
-          loadDashboardData()
-        }
-      })
-      .catch((error) => {
-        console.error("Error:", error)
-        alert("Error updating student. Please try again.")
+        if (dashboardSection.classList.contains("section-active")) loadDashboardData()
       })
   })
 
-  // Delete Student Modal
   function openDeleteModal(studentId) {
-    const student = filteredStudents.find((s) => s._id === studentId)
-
+    const student = filteredStudents.find((s) => s.id == studentId)
     if (student) {
-      document.getElementById("delete-student-id").value = studentId
+      document.getElementById("delete-student-id").value = student.id
       document.getElementById("delete-student-name").textContent = `${student.firstName} ${student.lastName}`
-
-      // Show the modal
-      const deleteModal = new bootstrap.Modal(document.getElementById("deleteStudentModal"))
-      deleteModal.show()
+      const modal = new bootstrap.Modal(document.getElementById("deleteStudentModal"))
+      modal.show()
     }
   }
 
-  // Confirm delete student
   document.getElementById("confirm-delete-button").addEventListener("click", () => {
     const studentId = document.getElementById("delete-student-id").value
-
-    fetch(`/api/students/${studentId}`, {
-      method: "DELETE",
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok")
-        }
-        return response.json()
-      })
-      .then((data) => {
-        // Close the modal
-        const deleteModalElement = document.getElementById("deleteStudentModal")
-        const deleteModal = bootstrap.Modal.getInstance(deleteModalElement)
-        deleteModal.hide()
-
-        // Show success message
+    fetch(`/api/students/${studentId}`, { method: "DELETE" })
+      .then((res) => res.json())
+      .then(() => {
         alert("Student deleted successfully!")
-
-        // Reload students
+        bootstrap.Modal.getInstance(document.getElementById("deleteStudentModal")).hide()
         loadStudents(currentPage, getFilters())
-
-        // If on dashboard, reload dashboard data
-        if (dashboardSection.classList.contains("section-active")) {
-          loadDashboardData()
-        }
-      })
-      .catch((error) => {
-        console.error("Error:", error)
-        alert("Error deleting student. Please try again.")
+        if (dashboardSection.classList.contains("section-active")) loadDashboardData()
       })
   })
 
-  // Load dashboard data on initial load
+  // Load dashboard on first load
   loadDashboardData()
 })

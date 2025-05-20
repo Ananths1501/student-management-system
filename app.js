@@ -1,177 +1,134 @@
-const express = require("express")
-const mongoose = require("mongoose")
-const path = require("path")
-const bodyParser = require("body-parser")
+const express = require("express");
+const bodyParser = require("body-parser");
+const path = require("path");
 
-// Create Express app
-const app = express()
-const PORT = process.env.PORT || 7373
+const sequelize = require("./models/index");
+const Student = require("./models/student.model");
+const { Op } = require("sequelize");
 
-// Middleware
-app.use(bodyParser.json())
-app.use(express.static(path.join(__dirname, "public")))
+const app = express();
+const PORT = process.env.PORT || 7373;
 
-// MongoDB Connection
-mongoose
-  .connect("mongodb://localhost:27017/student_management", {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.error("MongoDB connection error:", err))
+app.use(bodyParser.json());
+app.use(express.static(path.join(__dirname, "public")));
 
-// Student Schema
-const studentSchema = new mongoose.Schema({
-  firstName: { type: String, required: true },
-  lastName: { type: String, required: true },
-  email: { type: String, required: true, unique: true },
-  phone: { type: String, required: true },
-  gender: { type: String, required: true, enum: ["Male", "Female", "Other"] },
-  dateOfBirth: { type: Date, required: true },
-  course: { type: String, required: true },
-  enrollmentDate: { type: Date, required: true },
-  address: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now },
-})
-
-const Student = mongoose.model("Student", studentSchema)
-
-// API Routes
-
-// Get dashboard data
+// Dashboard Route
 app.get("/api/dashboard", async (req, res) => {
   try {
-    const totalStudents = await Student.countDocuments()
-    const maleStudents = await Student.countDocuments({ gender: "Male" })
-    const femaleStudents = await Student.countDocuments({ gender: "Female" })
-    const recentStudents = await Student.find().sort({ createdAt: -1 }).limit(5)
+    const totalStudents = await Student.count();
+    const maleStudents = await Student.count({ where: { gender: "Male" } });
+    const femaleStudents = await Student.count({ where: { gender: "Female" } });
+    const recentStudents = await Student.findAll({
+      order: [["createdAt", "DESC"]],
+      limit: 5,
+    });
 
-    res.json({
-      totalStudents,
-      maleStudents,
-      femaleStudents,
-      recentStudents,
-    })
-  } catch (error) {
-    console.error("Error fetching dashboard data:", error)
-    res.status(500).json({ message: "Server error" })
+    res.json({ totalStudents, maleStudents, femaleStudents, recentStudents });
+  } catch (err) {
+    console.error("Error fetching dashboard:", err);
+    res.status(500).json({ message: "Server error" });
   }
-})
+});
 
-// Get all students with pagination and filtering
+// Get all students with filters and pagination
 app.get("/api/students", async (req, res) => {
   try {
-    const page = Number.parseInt(req.query.page) || 1
-    const limit = Number.parseInt(req.query.limit) || 10
-    const skip = (page - 1) * limit
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
 
-    // Build filter
-    const filter = {}
-
+    const where = {};
     if (req.query.name) {
-      const nameRegex = new RegExp(req.query.name, "i")
-      filter.$or = [{ firstName: nameRegex }, { lastName: nameRegex }]
+      where[Op.or] = [
+        { firstName: { [Op.like]: `%${req.query.name}%` } },
+        { lastName: { [Op.like]: `%${req.query.name}%` } },
+      ];
     }
+    if (req.query.course) where.course = req.query.course;
+    if (req.query.gender) where.gender = req.query.gender;
 
-    if (req.query.course) {
-      filter.course = req.query.course
-    }
-
-    if (req.query.gender) {
-      filter.gender = req.query.gender
-    }
-
-    const total = await Student.countDocuments(filter)
-    const students = await Student.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit)
+    const { count, rows } = await Student.findAndCountAll({
+      where,
+      offset,
+      limit,
+      order: [["createdAt", "DESC"]],
+    });
 
     res.json({
-      students,
-      total,
+      students: rows,
+      total: count,
       page,
-      pages: Math.ceil(total / limit),
-    })
-  } catch (error) {
-    console.error("Error fetching students:", error)
-    res.status(500).json({ message: "Server error" })
+      pages: Math.ceil(count / limit),
+    });
+  } catch (err) {
+    console.error("Error fetching students:", err);
+    res.status(500).json({ message: "Server error" });
   }
-})
+});
 
-// Get a single student
+// Get single student
 app.get("/api/students/:id", async (req, res) => {
   try {
-    const student = await Student.findById(req.params.id)
-
-    if (!student) {
-      return res.status(404).json({ message: "Student not found" })
-    }
-
-    res.json(student)
-  } catch (error) {
-    console.error("Error fetching student:", error)
-    res.status(500).json({ message: "Server error" })
+    const student = await Student.findByPk(req.params.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
+    res.json(student);
+  } catch (err) {
+    console.error("Error fetching student:", err);
+    res.status(500).json({ message: "Server error" });
   }
-})
+});
 
-// Create a new student
+// Create student
 app.post("/api/students", async (req, res) => {
   try {
-    const newStudent = new Student(req.body)
-    const savedStudent = await newStudent.save()
-    res.status(201).json(savedStudent)
-  } catch (error) {
-    console.error("Error creating student:", error)
-
-    if (error.code === 11000) {
-      return res.status(400).json({ message: "Email already exists" })
+    const student = await Student.create(req.body);
+    res.status(201).json(student);
+  } catch (err) {
+    console.error("Error creating student:", err);
+    if (err.name === "SequelizeUniqueConstraintError") {
+      return res.status(400).json({ message: "Email already exists" });
     }
-
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({ message: "Server error" });
   }
-})
+});
 
-// Update a student
+// Update student
 app.put("/api/students/:id", async (req, res) => {
   try {
-    const updatedStudent = await Student.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true })
+    const student = await Student.findByPk(req.params.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
 
-    if (!updatedStudent) {
-      return res.status(404).json({ message: "Student not found" })
+    await student.update(req.body);
+    res.json(student);
+  } catch (err) {
+    console.error("Error updating student:", err);
+    if (err.name === "SequelizeUniqueConstraintError") {
+      return res.status(400).json({ message: "Email already exists" });
     }
-
-    res.json(updatedStudent)
-  } catch (error) {
-    console.error("Error updating student:", error)
-
-    if (error.code === 11000) {
-      return res.status(400).json({ message: "Email already exists" })
-    }
-
-    res.status(500).json({ message: "Server error" })
+    res.status(500).json({ message: "Server error" });
   }
-})
+});
 
-// Delete a student
+// Delete student
 app.delete("/api/students/:id", async (req, res) => {
   try {
-    const deletedStudent = await Student.findByIdAndDelete(req.params.id)
+    const student = await Student.findByPk(req.params.id);
+    if (!student) return res.status(404).json({ message: "Student not found" });
 
-    if (!deletedStudent) {
-      return res.status(404).json({ message: "Student not found" })
-    }
-
-    res.json({ message: "Student deleted successfully" })
-  } catch (error) {
-    console.error("Error deleting student:", error)
-    res.status(500).json({ message: "Server error" })
+    await student.destroy();
+    res.json({ message: "Student deleted successfully" });
+  } catch (err) {
+    console.error("Error deleting student:", err);
+    res.status(500).json({ message: "Server error" });
   }
-})
+});
 
-// Serve the main HTML file for all routes
+// Serve frontend
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"))
-})
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
-// Start the server
+// Start server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`)
-})
+  console.log(`Server running on port ${PORT}`);
+});
